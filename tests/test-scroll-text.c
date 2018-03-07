@@ -442,7 +442,7 @@ expose_handler (GtkWidget* window,
 		cairo_pattern_destroy (mask);
 		cairo_pattern_destroy (pattern);
 
-		gtk_window_set_opacity (GTK_WINDOW (window),
+		gtk_widget_set_opacity (window,
 					0.3f + g_distance * 0.7f);
 	}
 	else
@@ -461,7 +461,7 @@ expose_handler (GtkWidget* window,
 		cairo_mask (cr, mask);
 		cairo_pattern_destroy (pattern);
 
-		gtk_window_set_opacity (GTK_WINDOW (window), 1.0f);
+		gtk_widget_set_opacity (window, 1.0f);
 	}
 
 	return TRUE;
@@ -542,10 +542,19 @@ pointer_update (GtkWidget* window)
 
 	if (gtk_widget_get_realized (window))
 	{
-		gint distance_x = 0;
-		gint distance_y = 0;
+		GdkDeviceManager *device_manager;
+		GdkDevice        *device;
+		gint              distance_x;
+		gint              distance_y;
 
-		gtk_widget_get_pointer (window, &pointer_rel_x, &pointer_rel_y);
+		device_manager = gdk_display_get_device_manager (gtk_widget_get_display (window));
+		device = gdk_device_manager_get_client_pointer (device_manager);
+		gdk_window_get_device_position (gtk_widget_get_window (window),
+		                                device,
+		                                &pointer_rel_x,
+		                                &pointer_rel_y,
+		                                NULL);
+
 		gtk_window_get_position (GTK_WINDOW (window), &win_x, &win_y);
 		pointer_abs_x = win_x + pointer_rel_x;
 		pointer_abs_y = win_y + pointer_rel_y;
@@ -817,10 +826,10 @@ setup_tile (gint w, gint h)
 	cairo_surface_destroy (tmp);
 
 	// actually create the tile with padding in mind
-	tile = tile_new_for_padding (norm_surf, blur_surf);
-	destroy_cloned_surface (norm_surf);
-	destroy_cloned_surface (blur_surf);
-	destroy_cloned_surface (dummy_surf);
+	tile = tile_new_for_padding (norm_surf, blur_surf, width, height);
+	cairo_surface_destroy (norm_surf);
+	cairo_surface_destroy (blur_surf);
+	cairo_surface_destroy (dummy_surf);
 
 	cairo_destroy (cr);
 	cairo_surface_destroy (cr_surf);
@@ -843,7 +852,7 @@ setup_tile (gint w, gint h)
 	tile_paint_with_padding (tile, cr, 0.0f, 0.0f, w, h, 0.0f, 1.0f);
 	cairo_destroy (cr);
 
-	g_tile = tile_new_for_padding (norm_surf, blur_surf);
+	g_tile = tile_new_for_padding (norm_surf, blur_surf, width, height);
 
 	// clean up
 	tile_destroy (tile);
@@ -911,7 +920,7 @@ main (int    argc,
 	gtk_window_set_keep_above (GTK_WINDOW (window), TRUE);
 	gtk_window_set_resizable (GTK_WINDOW (window), FALSE);
 	gtk_window_set_accept_focus (GTK_WINDOW (window), FALSE);
-	gtk_window_set_opacity (GTK_WINDOW (window), 1.0f);
+	gtk_widget_set_opacity (window, 1.0f);
 	gtk_widget_set_size_request (window,
 				     (gint) (BUBBLE_WIDTH + 2.0f *
 					     BUBBLE_SHADOW_SIZE),

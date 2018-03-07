@@ -269,15 +269,21 @@ _trigger_bubble_redraw (gpointer data,
 	bubble_refresh (bubble);
 }
 
+static Bubble *sync_bubble = NULL;
+
 static void
 value_changed_handler (Defaults* defaults,
 		       Stack*    stack)
 {
 	if (stack->list != NULL)
 		g_list_foreach (stack->list, _trigger_bubble_redraw, NULL);
-}
 
-static Bubble *sync_bubble = NULL;
+	if (sync_bubble != NULL)
+	{
+		bubble_recalc_size (sync_bubble);
+		bubble_refresh (sync_bubble);
+	}
+}
 
 #include "display.c"
 
@@ -382,8 +388,10 @@ stack_push_bubble (Stack*  self,
 	if (!self || !IS_BUBBLE (bubble))
 		return -1;
 
+	notification_id = bubble_get_id (bubble);
+
 	/* check if this is just an update */
-	if (find_bubble_by_id (self, bubble_get_id (bubble)))
+	if (find_bubble_by_id (self, notification_id))
 	{
 		bubble_start_timer (bubble, TRUE);
 		bubble_refresh (bubble);
@@ -394,11 +402,17 @@ stack_push_bubble (Stack*  self,
 			if (stack_is_at_top_corner (self, sync_bubble))
 				bubble_sync_with (sync_bubble, bubble);
 
-		return bubble_get_id (bubble);
+		return notification_id;
 	}
 
 	/* add bubble/id to stack */
-	notification_id = self->next_id++;
+	if (notification_id == 0)
+	{
+		do
+		{
+			notification_id = self->next_id++;
+		} while (find_bubble_by_id (self, notification_id));
+	}
 
 	// FIXME: migrate stack to use abstract notification object and don't
 	// keep heavy bubble objects around, at anyone time at max. only two
@@ -575,6 +589,8 @@ stack_notify_handler (Stack*                 self,
 	GdkPixbuf* pixbuf     = NULL;
 	gboolean   new_bubble = FALSE;
 	gboolean   turn_into_dialog;
+	guint      real_id;
+	gchar     *sender;
 
 	// check max. allowed limit queue-size
 	if (g_list_length (self->list) > MAX_STACK_SIZE)
@@ -613,21 +629,33 @@ stack_notify_handler (Stack*                 self,
 		return TRUE;
 	}
 
-        // check if a bubble exists with same id
+	// check if a bubble exists with same id
 	bubble = find_bubble_by_id (self, id);
+	sender = dbus_g_method_get_sender (context);
+
+	if (bubble)
+	{
+		if (g_strcmp0 (bubble_get_sender (bubble), sender) != 0)
+		{
+			// Another sender is trying to replace a notification, let's block it!
+			id = 0;
+			bubble = NULL;
+		}
+	}
+
 	if (bubble == NULL)
 	{
-		gchar *sender;
 		new_bubble = TRUE;
 		bubble = bubble_new (self->defaults);
 		g_object_weak_ref (G_OBJECT (bubble),
 				   _weak_notify_cb,
 				   (gpointer) self);
-		
-		sender = dbus_g_method_get_sender (context);
+
 		bubble_set_sender (bubble, sender);
-		g_free (sender);
+		bubble_set_id (bubble, id);
 	}
+
+	g_free (sender);
 
 	if (new_bubble && hints)
 	{
@@ -654,11 +682,12 @@ stack_notify_handler (Stack*                 self,
 			g_object_unref(bubble);
 			bubble = app_bubble;
 			if (body) {
-				bubble_append_message_body (bubble, "\n");
 				bubble_append_message_body (bubble, body);
 			}
 		}
 	}
+
+	real_id = bubble_get_id (bubble);
 
 	if (hints)
 	{
@@ -671,6 +700,12 @@ stack_notify_handler (Stack*                 self,
 			{
 				g_object_unref (bubble);
 				bubble = sync_bubble;
+
+				bubble_set_title (sync_bubble, summary ? summary : "");
+				bubble_set_message_body (sync_bubble, body ? body : "");
+				bubble_set_value (sync_bubble, -2);
+
+				bubble_determine_layout (sync_bubble);
 			}
 
 			if (data && G_VALUE_HOLDS_STRING (data))
@@ -721,7 +756,7 @@ stack_notify_handler (Stack*                 self,
 		{
 			g_debug("Using image_path hint\n");
 			if ((data && G_VALUE_HOLDS_STRING (data)))
-				bubble_set_icon_from_path (bubble, g_value_get_string(data));
+				bubble_set_icon (bubble, g_value_get_string(data));
 			else
 				g_warning ("image_path hint is not a string\n");
 		}
@@ -750,7 +785,7 @@ stack_notify_handler (Stack*                 self,
 	{
 		stack_display_sync_bubble (self, bubble);
 	} else {
-		stack_push_bubble (self, bubble);
+		real_id = stack_push_bubble (self, bubble);
 
 		if (! new_bubble && bubble_is_append_allowed (bubble))
 			log_bubble (bubble, app_name, "appended");
@@ -769,11 +804,11 @@ stack_notify_handler (Stack*                 self,
 
 		/* update the layout of the stack;
 		 * this will also open the new bubble */
-		stack_layout (self);
+		if (!stack_layout (self))
+			bubble = NULL;
 	}
 
-	if (bubble)
-		dbus_g_method_return (context, bubble_get_id (bubble));
+	dbus_g_method_return (context, real_id);
 
 	// FIXME: this is a temporary work-around, I do not like at all, until
 	// the heavy memory leakage of notify-osd is fully fixed...
@@ -885,6 +920,9 @@ stack_get_slot_position (Stack* self,
                          gint*  x,
                          gint*  y)
 {
+	GdkScreen* screen        = NULL;
+	gboolean   is_composited = FALSE;
+
 	// sanity checks
 	if (!x && !y)
 		return;
@@ -904,7 +942,9 @@ stack_get_slot_position (Stack* self,
 	}
 
 	// initialize x and y
-	defaults_get_top_corner (self->defaults, x, y);
+	defaults_get_top_corner (self->defaults, &screen, x, y);
+
+	is_composited = gdk_screen_is_composited (screen);
 
 	// differentiate returned top-left corner for top and bottom slot
 	// depending on the placement 
@@ -920,12 +960,12 @@ stack_get_slot_position (Stack* self,
 				*y += defaults_get_desktop_height (d) / 2 -
 				      EM2PIXELS (defaults_get_bubble_vert_gap (d) / 2.0f, d) -
 				      bubble_height +
-				      EM2PIXELS (defaults_get_bubble_shadow_size (d), d);
+				      EM2PIXELS (defaults_get_bubble_shadow_size (d, is_composited), d);
 			// the position for the async. bubble
 			else if (slot == SLOT_BOTTOM)
 				*y += defaults_get_desktop_height (d) / 2 +
 				      EM2PIXELS (defaults_get_bubble_vert_gap (d) / 2.0f, d) -
-				      EM2PIXELS (defaults_get_bubble_shadow_size (d), d);
+				      EM2PIXELS (defaults_get_bubble_shadow_size (d, is_composited), d);
 		break;
 
 		case GRAVITY_NORTH_EAST:
@@ -945,14 +985,14 @@ stack_get_slot_position (Stack* self,
 						*y += EM2PIXELS (defaults_get_icon_size (d), d) +
 						      2 * EM2PIXELS (defaults_get_margin_size (d), d) +
 						      EM2PIXELS (defaults_get_bubble_vert_gap (d), d); /* +
-						      2 * EM2PIXELS (defaults_get_bubble_shadow_size (d), d);*/
+						      2 * EM2PIXELS (defaults_get_bubble_shadow_size (d, is_composited), d);*/
 					break;
 
 					case SLOT_ALLOCATION_DYNAMIC:
 						g_assert (stack_is_slot_vacant (self, SLOT_TOP) == OCCUPIED);
 						*y += bubble_get_height (self->slots[SLOT_TOP]) +
 						      EM2PIXELS (defaults_get_bubble_vert_gap (d), d) -
-						      2 * EM2PIXELS (defaults_get_bubble_shadow_size (d), d);
+						      2 * EM2PIXELS (defaults_get_bubble_shadow_size (d, is_composited), d);
 					break;
 
 					default:
