@@ -288,7 +288,7 @@ stack_layout (Stack* self)
 	gint       y      = 0;
 	gint       x      = 0;
 
-	g_return_if_fail (self != NULL);
+	g_return_val_if_fail (self != NULL, TRUE);
 
 	bubble = stack_select_next_to_display (self);
 	if (bubble == NULL)
