@@ -69,6 +69,7 @@ extern short DEFAULT_TEXT_TITLE_WEIGHT;
 extern short DEFAULT_TEXT_BODY_WEIGHT;
 extern short SLOT_ALLOCATION;
 
+extern float DEFAULT_MARGIN_TOP;
 extern float DEFAULT_MARGIN_SIZE;
 extern float DEFAULT_BUBBLE_CORNER_RADIUS;
 extern float DEFAULT_BUBBLE_WIDTH;
@@ -237,6 +238,10 @@ void load_settings(void)
         } else if (!strcmp(key, "bubble-as-desktop-bg") &&
                    sscanf(value, "%d", &ivalue) ) {
             BUBBLE_AS_DESKTOP_BG = ivalue;
+
+        } else if (!strcmp(key, "bubble-margin-top") &&
+                   sscanf(value, "%f", &fvalue) ) {
+            DEFAULT_MARGIN_TOP = fvalue*0.1;
 
         }
         

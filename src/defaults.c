@@ -59,6 +59,7 @@ enum
 	PROP_BUBBLE_CORNER_RADIUS,
 	PROP_CONTENT_SHADOW_SIZE,
 	PROP_CONTENT_SHADOW_COLOR,
+	PROP_MARGIN_TOP,
 	PROP_MARGIN_SIZE,
 	PROP_ICON_SIZE,
 	PROP_GAUGE_SIZE,
@@ -117,6 +118,7 @@ float DEFAULT_BUBBLE_HORZ_GAP  = 0.5f;
 float DEFAULT_BUBBLE_CORNER_RADIUS  = 0.375f;
 #define DEFAULT_CONTENT_SHADOW_SIZE  0.125f
 #define DEFAULT_CONTENT_SHADOW_COLOR "#000000"
+float DEFAULT_MARGIN_TOP = 0.0f;
 float DEFAULT_MARGIN_SIZE  = 1.0f;
 float DEFAULT_ICON_SIZE  = 3.0f;
 float DEFAULT_GAUGE_SIZE  = 0.625f;
@@ -560,6 +562,10 @@ defaults_get_property (GObject*    gobject,
 					    defaults->content_shadow_color->str);
 		break;
 
+		case PROP_MARGIN_TOP:
+			g_value_set_double (value, defaults->margin_top);
+		break;
+
 		case PROP_MARGIN_SIZE:
 			g_value_set_double (value, defaults->margin_size);
 		break;
@@ -742,6 +748,10 @@ defaults_set_property (GObject*      gobject,
 				g_value_get_string (value));
 		break;
 
+		case PROP_MARGIN_TOP:
+			defaults->margin_top = g_value_get_double (value);
+		break;
+
 		case PROP_MARGIN_SIZE:
 			defaults->margin_size = g_value_get_double (value);
 		break;
@@ -857,6 +867,7 @@ defaults_class_init (DefaultsClass* klass)
 	GParamSpec*   property_bubble_corner_radius;
 	GParamSpec*   property_content_shadow_size;
 	GParamSpec*   property_content_shadow_color;
+	GParamSpec*   property_margin_top;
 	GParamSpec*   property_margin_size;
 	GParamSpec*   property_icon_size;
 	GParamSpec*   property_gauge_size;
@@ -1103,6 +1114,21 @@ defaults_class_init (DefaultsClass* klass)
 	g_object_class_install_property (gobject_class,
 					 PROP_CONTENT_SHADOW_COLOR,
 					 property_content_shadow_color);
+
+	property_margin_top = g_param_spec_double (
+				"margin-top",
+				"margin-top",
+				"Size (in pm) of margin",
+				0.0f,
+				100.0f,
+				DEFAULT_MARGIN_TOP,
+				G_PARAM_CONSTRUCT |
+				G_PARAM_READWRITE |
+				G_PARAM_STATIC_STRINGS);
+	g_object_class_install_property (gobject_class,
+					 PROP_MARGIN_TOP,
+					 property_margin_top);
+
 
 	property_margin_size = g_param_spec_double (
 				"margin-size",
@@ -1629,6 +1655,19 @@ defaults_get_content_shadow_color (Defaults* self)
 		      NULL);
 
 	return content_shadow_color;
+}
+
+gdouble
+defaults_get_margin_top (Defaults* self)
+{
+	gdouble margin_top;
+
+	if (!self || !IS_DEFAULTS (self))
+		return 0.0f;
+
+	g_object_get (self, "margin-top", &margin_top, NULL);
+
+	return margin_top;
 }
 
 gdouble

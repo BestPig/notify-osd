@@ -2761,10 +2761,13 @@ bubble_move (Bubble* self,
 	     gint    x,
 	     gint    y)
 {
+	Defaults* d = self->defaults;
+
 	if (!self || !IS_BUBBLE (self))
 		return;
 
-	gtk_window_move (GTK_WINDOW (self->priv->widget), x, y);
+	gtk_window_move (GTK_WINDOW (self->priv->widget), x, y
+			 + EM2PIXELS (defaults_get_margin_top (d), d));
 }
 
 static void

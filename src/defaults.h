@@ -101,6 +101,7 @@ struct _Defaults
 	gdouble        bubble_corner_radius;
 	gdouble        content_shadow_size;
 	GString*       content_shadow_color;
+	gdouble        margin_top;
 	gdouble        margin_size;
 	gdouble        icon_size;
 	gdouble        gauge_size;
@@ -203,6 +204,9 @@ defaults_get_content_shadow_size (Defaults* self);
 
 gchar*
 defaults_get_content_shadow_color (Defaults* self);
+
+gdouble
+defaults_get_margin_top (Defaults* self);
 
 gdouble
 defaults_get_margin_size (Defaults* self);
